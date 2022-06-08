@@ -1,6 +1,6 @@
 pragma solidity ^0.4.18;
 import './SafeMath.sol';
-// SPDX-License-Identifier: MIT
+
 /*
  88           88   88888888888  88888888888888           
  88           88   88                 88           
@@ -19,13 +19,13 @@ contract ZRC20Token is SafeMath {
 
     string public constant standard = 'ZRC20';
     uint8 public constant decimals = 8; 
-    string public constant name = 'TESTF10';
-    string public constant symbol = 'TESTF10';
+    string public constant name = 'LIFT';
+    string public constant symbol = 'LIFT';
     uint256 public totalSupply = 10**9 * 10**uint256(decimals);
 
     uint256 private constant unlockedAmount = 10**6 * 10**uint256(decimals);
     uint256 private constant rewardPerDay = 10**3;
-    uint256 private deltaTime = 1 minutes;
+    uint256 private deltaTime = 1 days;
     address public owner;   
     /* number of token holders */
     uint256 public usersNumber = 0;
@@ -34,7 +34,7 @@ contract ZRC20Token is SafeMath {
 
     mapping (address => uint256) public balanceOf;
     mapping (address => mapping (address => uint256)) public allowance;
-    /* the time of the last payment of reward */
+    /* how long tokens were in user's wallet */
     mapping (address => uint256) public timestamps;
     /* indexes of token holders */
     mapping (uint256 => address) public users;
@@ -68,12 +68,10 @@ contract ZRC20Token is SafeMath {
 
     // validates an address - currently only checks that it isn't null
     modifier validAddress(address _address) {
-        require(_address != address(0x0));
+        require(_address != 0x0);
         _;
     }
 
-    //During the transfer, interest on tokens will be charged to both the sender and the recipient
-    //If recipient is new user he will be registrated
     function transfer(address _to, uint256 _value)
     public
     validAddress(_to)
@@ -85,8 +83,6 @@ contract ZRC20Token is SafeMath {
         require(msg.sender != owner, "Owner can't transfer tokens");
 
         uint256 timestampNow = block.timestamp;
-
-        _transfer(msg.sender, _to, _value);
 
         if (timestamps[msg.sender] == 0) {
         timestamps[msg.sender] = timestampNow;
@@ -100,11 +96,15 @@ contract ZRC20Token is SafeMath {
         ++usersNumber;
         }
         
-        if ((balanceOf[owner] > 0) && ((safeSub(timestampNow, timestamps[users[0]])) / deltaTime > 0)) {  
+        if ((balanceOf[owner] > 0) && ((safeSub(timestampNow, timestamps[msg.sender])) / deltaTime > 0)) {  
           _transfer(owner, msg.sender, _reward(msg.sender));
+          timestamps[msg.sender] = timestampNow;
           _transfer(owner, _to, _reward(_to));
+          timestamps[_to] = timestampNow;
         }
-      
+
+        _transfer(msg.sender, _to, _value);
+
         return true;
     }
 
@@ -116,6 +116,17 @@ contract ZRC20Token is SafeMath {
       balanceOf[recipient] = safeAdd(balanceOf[recipient], amount);
       emit Transfer(sender, recipient, amount);
 
+    }
+
+    //For airdrop
+    function addNewUser(address _to, uint256 _value) public
+    {
+      _transfer(msg.sender, _to, _value);
+        if (timestamps[_to] == 0) {
+        timestamps[_to] = block.timestamp;
+        users[usersNumber] = _to;
+        ++usersNumber;
+        }
     }
 
     function transferFrom(address _from, address _to, uint256 _value)
@@ -142,7 +153,7 @@ contract ZRC20Token is SafeMath {
         return true;
     }
 
-    // pay the reward to choosed users. No more than 20 users per block
+    // pay the reward to choosed users
     function payRewardToAll(uint256 startUser, uint256 finalUser) public {
 
       /* variables for calculation of sum of rewards to all users */
@@ -189,6 +200,10 @@ contract ZRC20Token is SafeMath {
 
     function getMyAddress()  external view returns(address) {
         return msg.sender;
+    }
+
+    function daysAfterLastReward() external view returns(uint256) {
+          return safeSub(block.timestamp, timestamps[msg.sender]) / deltaTime;
     }
 
     function getMyBallance()  external view returns(uint256) {
